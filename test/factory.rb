@@ -58,4 +58,10 @@ module Factory
       :state => 'pending'
     )
   end
+  
+  build ColorWithDifferentPrimaryKey do |attributes|
+    attributes.reverse_merge!(
+      :name => 'red'
+    )
+  end
 end

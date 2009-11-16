@@ -546,3 +546,45 @@ class EnumerationFastBootstrappedWithDefaultsTest < ActiveRecord::TestCase
     assert_equal '#00ff00', @green.html
   end
 end
+
+class EnumerationWithDifferentPrimaryKeyBootstrappedTest < ActiveRecord::TestCase
+  def setup
+    ColorWithDifferentPrimaryKey.bootstrap(
+      { :nr => 1, :name => 'red' },
+      { :nr => 2, :name => 'green' }
+    )
+  end
+  
+  def test_should_be_able_to_bootstrap
+    assert_equal 2, ColorWithDifferentPrimaryKey.count
+  end  
+  
+  def test_should_index_by_enumerator
+    assert_equal ColorWithDifferentPrimaryKey.find_by_name('red'), ColorWithDifferentPrimaryKey['red']
+  end
+ 
+  def test_should_have_the_right_id
+    assert_equal 2, ColorWithDifferentPrimaryKey['green'].nr
+  end
+end
+
+class EnumerationWithDifferentPrimaryKeyFastBootstrappedTest < ActiveRecord::TestCase
+  def setup
+    ColorWithDifferentPrimaryKey.fast_bootstrap(
+      { :nr => 1, :name => 'red' },
+      { :nr => 2, :name => 'green' }
+    )
+  end
+  
+  def test_should_be_able_to_bootstrap
+    assert_equal 2, ColorWithDifferentPrimaryKey.count
+  end  
+  
+  def test_should_index_by_enumerator
+    assert_equal ColorWithDifferentPrimaryKey.find_by_name('red'), ColorWithDifferentPrimaryKey['red']
+  end
+ 
+  def test_should_have_the_right_id
+    assert_equal 2, ColorWithDifferentPrimaryKey['green'].nr
+  end
+end
