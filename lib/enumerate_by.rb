@@ -1,7 +1,5 @@
 require 'enumerate_by/extensions/associations'
 require 'enumerate_by/extensions/base_conditions'
-require 'enumerate_by/extensions/serializer'
-require 'enumerate_by/extensions/xml_serializer'
 
 # An enumeration defines a finite set of enumerators which (often) have no
 # numerical order.  This extension provides a general technique for using
