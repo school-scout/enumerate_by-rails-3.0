@@ -1,7 +1,5 @@
 require 'enumerate_by/extensions/associations'
 require 'enumerate_by/extensions/base_conditions'
-require 'enumerate_by/extensions/serializer'
-require 'enumerate_by/extensions/xml_serializer'
 
 # An enumeration defines a finite set of enumerators which (often) have no
 # numerical order.  This extension provides a general technique for using
@@ -17,7 +15,11 @@ module EnumerateBy
         # Tracks which associations are backed by an enumeration
         # {"foreign key" => "association name"}
         class_inheritable_accessor :enumeration_associations
-        self.enumeration_associations = {}
+        
+        # Fix existing models not getting the default value
+        ([self] + descendants).each do |model|
+          model.enumeration_associations = {}
+        end
       end
     end
     
@@ -178,7 +180,7 @@ module EnumerateBy
     [:find_by_sql, :exists?, :calculate].each do |method|
       define_method(method) do |*args|
         if EnumerateBy.perform_caching && perform_enumerator_caching
-          enumerator_cache_store.fetch([method] + args) { super(*args) }
+          shallow_clone(enumerator_cache_store.fetch([method] + args) { super(*args) })
         else
           super(*args)
         end
@@ -207,6 +209,16 @@ module EnumerateBy
           enumerator
         else
           enumerator.is_a?(Symbol) ? enumerator.to_s : enumerator
+        end
+      end
+      
+      # Generates a copy of the given record(s), keeping intact the original id
+      def shallow_clone(result)
+        case result
+        when Array
+          result.map {|item| shallow_clone(item)}
+        when ActiveRecord::Base
+          result.class.send(:instantiate, result.instance_variable_get(:@attributes))
         end
       end
   end
@@ -265,11 +277,13 @@ module EnumerateBy
     # Otherwise, any changes to that column remain there.
     def bootstrap(*records)
       uncached do
+        primary_key = self.primary_key.to_sym
+        
         # Remove records that are no longer being used
         records.flatten!
-        ids = records.map {|record| record[primary_key.to_sym]}.compact
-        delete_all(ids.any? ? [primary_key + ' NOT IN (?)', ids] : nil)
-        
+        ids = records.map {|record| record[primary_key]}.compact
+        delete_all(ids.any? ? ["#{primary_key} NOT IN (?)", ids] : nil)
+
         # Find remaining existing records (to be updated)
         existing = all.inject({}) {|existing, record| existing[record.send(primary_key)] = record; existing}
         
@@ -279,7 +293,7 @@ module EnumerateBy
           
           # Update with new attributes
           record =
-            if record = existing[attributes[primary_key.to_sym]]
+            if record = existing[attributes[primary_key]]
               attributes.merge!(defaults.delete_if {|attribute, value| record.send("#{attribute}?")}) if defaults
               record.attributes = attributes
               record
@@ -287,8 +301,8 @@ module EnumerateBy
               attributes.merge!(defaults) if defaults
               new(attributes)
             end
-          record.send(primary_key + '=', attributes[primary_key.to_sym])
-          
+          record.send("#{primary_key}=", attributes[primary_key])
+
           # Force failed saves to stop execution
           record.save!
           record
@@ -317,27 +331,29 @@ module EnumerateBy
     # 
     # See EnumerateBy::Bootstrapped#bootstrap for information about usage.
     def fast_bootstrap(*records)
+      primary_key = self.primary_key.to_sym
+      
       # Remove records that are no longer being used
       records.flatten!
-      ids = records.map {|record| record[primary_key.to_sym]}.compact
-      delete_all(ids.any? ? [primary_key + ' NOT IN (?)', ids] : nil)
+      ids = records.map {|record| record[primary_key]}.compact
+      delete_all(ids.any? ? ["#{primary_key} NOT IN (?)", ids] : nil)
       
       # Find remaining existing records (to be updated)
       quoted_table_name = self.quoted_table_name
-      existing = connection.select_all("SELECT * FROM #{quoted_table_name}").inject({}) {|existing, record| existing[record[primary_key].to_i] = record; existing}
-      
+      existing = connection.select_all("SELECT * FROM #{quoted_table_name}").inject({}) {|existing, record| existing[record[primary_key.to_s].to_i] = record; existing}
+
       records.each do |attributes|
         attributes.stringify_keys!
         if defaults = attributes.delete('defaults')
           defaults.stringify_keys!
         end
         
-        id = attributes[primary_key]
+        id = attributes[primary_key.to_s]
         if existing_attributes = existing[id]
           # Record exists: Update attributes
-          attributes.delete(primary_key)
+          attributes.delete(primary_key.to_s)
           attributes.merge!(defaults.delete_if {|attribute, value| !existing_attributes[attribute].nil?}) if defaults
-          update_all(attributes, primary_key.to_sym => id)
+          update_all(attributes, primary_key => id)
         else
           # Record doesn't exist: create new one
           attributes.merge!(defaults) if defaults

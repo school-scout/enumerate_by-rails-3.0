@@ -34,7 +34,6 @@ module Factory
   end
   
   build Car do |attributes|
-    attributes[:color] = create_color unless attributes.include?(:color)
     attributes.reverse_merge!(
       :name => 'Ford Mustang'
     )
@@ -52,6 +51,12 @@ module Factory
     )
   end
   
+  build LegacyColor do |attributes|
+    attributes.reverse_merge!(
+      :name => 'red'
+    )
+  end
+  
   build Order do |attributes|
     attributes[:car_part] = create_car_part unless attributes.include?(:car_part)
     attributes.reverse_merge!(
@@ -59,9 +64,9 @@ module Factory
     )
   end
   
-  build ColorWithDifferentPrimaryKey do |attributes|
+  build Tag do |attributes|
     attributes.reverse_merge!(
-      :name => 'red'
+      :name => 'rails'
     )
   end
 end

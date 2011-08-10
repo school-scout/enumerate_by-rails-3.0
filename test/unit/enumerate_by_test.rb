@@ -284,6 +284,14 @@ class EnumerationWithCachingTest < ActiveRecord::TestCase
     assert Color.perform_enumerator_caching
   end
   
+  def test_should_not_return_same_objects
+    assert_not_same Color.find(@red.id), Color.find(@red.id)
+  end
+  
+  def test_should_not_return_same_collections
+    assert_not_same Color.find_all_by_id(@red.id), Color.find_all_by_id(@red.id)
+  end
+  
   def test_should_cache_all_finder_queries
    assert_queries(1) { Color.find(@red.id) }
    assert_queries(0) { Color.find(@red.id) }
@@ -310,6 +318,7 @@ class EnumerationWithCachingTest < ActiveRecord::TestCase
   end
   
   def teardown
+    Color.enumerator_cache_store.clear
     EnumerateBy.perform_caching = false
   end
 end
@@ -344,6 +353,33 @@ class EnumerationWithoutCachingTest < ActiveRecord::TestCase
   def teardown
     EnumerateBy.perform_caching = false
     Color.perform_enumerator_caching = @original_perform_caching
+  end
+end
+
+class EnumerationWithAssociationsTest < ActiveRecord::TestCase
+  def setup
+    EnumerateBy.perform_caching = true
+    
+    @red = create_color(:name => 'red')
+    @blue = create_color(:name => 'blue')
+    @red_car = create_car(:name => 'Ford Mustang', :color => @red)
+    @blue_car = create_car(:name => 'Ford Mustang', :color => @blue)
+  end
+  
+  def test_should_find_associated_records
+    assert_equal [@red_car], Color['red'].cars
+  end
+  
+  def test_should_not_cache_association_on_subsequent_usage
+    assert_equal [@red_car], Color['red'].cars
+    
+    @second_red_car = create_car(:name => 'Ford Mustang', :color => @red)
+    assert_equal [@red_car, @second_red_car], Color['red'].cars
+  end
+  
+  def teardown
+    Color.enumerator_cache_store.clear
+    EnumerateBy.perform_caching = false
   end
 end
 
@@ -448,6 +484,28 @@ class EnumerationBootstrappedWithDefaultsTest < ActiveRecord::TestCase
   end
 end
 
+class EnumerationWithCustomPrimaryKeyBootstrappedTest < ActiveRecord::TestCase
+  def setup
+    @red, @green = LegacyColor.bootstrap(
+      {:uid => 1, :name => 'red'},
+      {:uid => 2, :name => 'green'}
+    )
+  end
+  
+  def test_should_not_raise_exception_if_primary_key_not_specified
+    assert_nothing_raised { LegacyColor.bootstrap({:name => 'red'}, {:name => 'green'}) }
+    assert_equal 2, LegacyColor.count
+  end
+  
+  def test_should_create_records
+    assert_equal @red, LegacyColor.find(1)
+    assert_equal 'red', @red.name
+    
+    assert_equal @green, LegacyColor.find(2)
+    assert_equal 'green', @green.name
+  end
+end
+
 class EnumerationFastBootstrappedTest < ActiveRecord::TestCase
   def setup
     @result = Color.fast_bootstrap(
@@ -547,44 +605,22 @@ class EnumerationFastBootstrappedWithDefaultsTest < ActiveRecord::TestCase
   end
 end
 
-class EnumerationWithDifferentPrimaryKeyBootstrappedTest < ActiveRecord::TestCase
+class EnumerationWithCustomPrimaryKeyFastBootstrappedTest < ActiveRecord::TestCase
   def setup
-    ColorWithDifferentPrimaryKey.bootstrap(
-      { :nr => 1, :name => 'red' },
-      { :nr => 2, :name => 'green' }
+    @result = LegacyColor.fast_bootstrap(
+      {:uid => 1, :name => 'red'},
+      {:uid => 2, :name => 'green'}
     )
   end
   
-  def test_should_be_able_to_bootstrap
-    assert_equal 2, ColorWithDifferentPrimaryKey.count
-  end  
-  
-  def test_should_index_by_enumerator
-    assert_equal ColorWithDifferentPrimaryKey.find_by_name('red'), ColorWithDifferentPrimaryKey['red']
-  end
- 
-  def test_should_have_the_right_id
-    assert_equal 2, ColorWithDifferentPrimaryKey['green'].nr
-  end
-end
-
-class EnumerationWithDifferentPrimaryKeyFastBootstrappedTest < ActiveRecord::TestCase
-  def setup
-    ColorWithDifferentPrimaryKey.fast_bootstrap(
-      { :nr => 1, :name => 'red' },
-      { :nr => 2, :name => 'green' }
-    )
+  def test_should_not_raise_exception_if_primary_key_not_specified
+    assert_nothing_raised { LegacyColor.fast_bootstrap({:name => 'red'}, {:name => 'green'}) }
+    assert_equal 2, LegacyColor.count
   end
   
-  def test_should_be_able_to_bootstrap
-    assert_equal 2, ColorWithDifferentPrimaryKey.count
-  end  
-  
-  def test_should_index_by_enumerator
-    assert_equal ColorWithDifferentPrimaryKey.find_by_name('red'), ColorWithDifferentPrimaryKey['red']
-  end
- 
-  def test_should_have_the_right_id
-    assert_equal 2, ColorWithDifferentPrimaryKey['green'].nr
+  def test_should_create_records
+    assert @result
+    assert_not_nil LegacyColor.find_by_name('red')
+    assert_not_nil LegacyColor.find_by_name('green')
   end
 end
